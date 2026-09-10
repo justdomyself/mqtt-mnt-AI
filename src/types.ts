@@ -40,6 +40,7 @@ export interface MqttStatus {
   messageCount: number;
   lastMessageAt: number | null;
   lastError: string | null;
+  mode?: 'server' | 'browser';
 }
 
 export interface MessageLog {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Server, 
   Search, 
@@ -15,7 +15,14 @@ import {
   Layers,
   Thermometer,
   Droplets,
-  Terminal
+  Terminal,
+  ShieldCheck,
+  Globe,
+  Play,
+  Pause,
+  Clock,
+  Sparkles,
+  Code2
 } from 'lucide-react';
 import { DeviceInfo, MqttStatus, MessageLog } from './types';
 import { MqttHeader } from './components/MqttHeader';
@@ -24,6 +31,7 @@ import { DeviceDetailModal } from './components/DeviceDetailModal';
 import { MessageLogPanel } from './components/MessageLogPanel';
 import { BrokerConfigModal } from './components/BrokerConfigModal';
 import { AddDeviceModal } from './components/AddDeviceModal';
+import { BrowserMqttManager } from './lib/browserMqtt';
 
 interface ToastMessage {
   id: string;
@@ -38,12 +46,15 @@ export default function App() {
     connected: false,
     connecting: true,
     broker: 'mqtt://www.lxlee.top:1883',
-    topic: '/mnt/esp32',
+    topic: '/esp32/mnt',
     messageCount: 0,
     lastMessageAt: null,
     lastError: null,
+    mode: 'server',
   });
   const [logs, setLogs] = useState<MessageLog[]>([]);
+  const [isBrowserMode, setIsBrowserMode] = useState<boolean>(false);
+  const browserMqttRef = useRef<BrowserMqttManager | null>(null);
   
   // UI state
   const [selectedDevice, setSelectedDevice] = useState<DeviceInfo | null>(null);
@@ -52,6 +63,7 @@ export default function App() {
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'online' | 'valve_on' | 'valve_off'>('all');
+  const [isAutoSimulating, setIsAutoSimulating] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Add toast helper
@@ -63,7 +75,7 @@ export default function App() {
     }, 4000);
   };
 
-  // Fetch full state from backend
+  // Fetch full state from backend (for server mode)
   const fetchInitialData = useCallback(async () => {
     try {
       const [statusRes, devicesRes, logsRes] = await Promise.all([
@@ -74,7 +86,7 @@ export default function App() {
 
       if (statusRes.ok) {
         const s = await statusRes.json();
-        setMqttStatus(s);
+        setMqttStatus((prev) => ({ ...prev, ...s, mode: 'server' }));
       }
       if (devicesRes.ok) {
         const d = await devicesRes.json();
@@ -89,83 +101,148 @@ export default function App() {
     }
   }, []);
 
-  // Connect SSE for real-time live events
+  // Dual-mode initialization: Automatically detects if running on fullstack Node.js or static hosting (Netlify/Vercel)
   useEffect(() => {
-    fetchInitialData();
-
+    let isMounted = true;
     let eventSource: EventSource | null = null;
+    let pollTimer: any = null;
 
-    try {
-      eventSource = new EventSource('/api/stream');
-
-      eventSource.addEventListener('init', (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.status) setMqttStatus(payload.status);
-          if (payload.devices) setDevices(payload.devices);
-          if (payload.logs) setLogs(payload.logs);
-        } catch (err) {
-          console.error('Error parsing SSE init payload', err);
+    async function detectEnvironmentAndInit() {
+      let hasBackend = false;
+      try {
+        const ping = await fetch('/api/health', {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000),
+        });
+        if (ping.ok) {
+          const data = await ping.json();
+          if (data && data.status === 'ok') {
+            hasBackend = true;
+          }
         }
-      });
+      } catch {
+        hasBackend = false;
+      }
 
-      eventSource.addEventListener('status', (e) => {
-        try {
-          const s = JSON.parse(e.data);
-          setMqttStatus(s);
-        } catch (err) {
-          console.error('Error parsing SSE status payload', err);
-        }
-      });
+      if (!isMounted) return;
 
-      eventSource.addEventListener('device_update', (e) => {
+      if (hasBackend) {
+        // Fullstack mode (Server running with Express + Node MQTT)
+        setIsBrowserMode(false);
+        fetchInitialData();
+
         try {
-          const dev: DeviceInfo = JSON.parse(e.data);
-          setDevices((prev) => {
-            const idx = prev.findIndex((d) => d.mac === dev.mac);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = dev;
-              return updated;
-            } else {
-              return [dev, ...prev];
+          eventSource = new EventSource('/api/stream');
+
+          eventSource.addEventListener('init', (e) => {
+            try {
+              const payload = JSON.parse(e.data);
+              if (payload.status) setMqttStatus({ ...payload.status, mode: 'server' });
+              if (payload.devices) setDevices(payload.devices);
+              if (payload.logs) setLogs(payload.logs);
+            } catch (err) {
+              console.error('Error parsing SSE init payload', err);
             }
           });
 
-          // Also update currently selected device if opened in modal
-          setSelectedDevice((curr) => (curr && curr.mac === dev.mac ? dev : curr));
+          eventSource.addEventListener('status', (e) => {
+            try {
+              const s = JSON.parse(e.data);
+              setMqttStatus({ ...s, mode: 'server' });
+            } catch (err) {
+              console.error('Error parsing SSE status payload', err);
+            }
+          });
+
+          eventSource.addEventListener('device_update', (e) => {
+            try {
+              const dev: DeviceInfo = JSON.parse(e.data);
+              setDevices((prev) => {
+                const idx = prev.findIndex((d) => d.mac === dev.mac);
+                if (idx >= 0) {
+                  const updated = [...prev];
+                  updated[idx] = dev;
+                  return updated;
+                } else {
+                  return [dev, ...prev];
+                }
+              });
+              setSelectedDevice((curr) => (curr && curr.mac === dev.mac ? dev : curr));
+            } catch (err) {
+              console.error('Error parsing SSE device_update', err);
+            }
+          });
+
+          eventSource.addEventListener('device_removed', (e) => {
+            try {
+              const { mac } = JSON.parse(e.data);
+              setDevices((prev) => prev.filter((d) => d.mac !== mac));
+              setSelectedDevice((curr) => (curr && curr.mac === mac ? null : curr));
+            } catch (err) {
+              console.error('Error parsing SSE device_removed', err);
+            }
+          });
+
+          eventSource.addEventListener('log', (e) => {
+            try {
+              const logItem: MessageLog = JSON.parse(e.data);
+              setLogs((prev) => [logItem, ...prev.slice(0, 199)]);
+            } catch (err) {
+              console.error('Error parsing SSE log item', err);
+            }
+          });
+
+          eventSource.addEventListener('clear_logs', () => {
+            setLogs([]);
+          });
+
+          eventSource.onerror = () => {
+            // Reconnect handled automatically by EventSource
+          };
         } catch (err) {
-          console.error('Error parsing SSE device_update', err);
+          console.warn('SSE connection failed:', err);
         }
-      });
 
-      eventSource.addEventListener('log', (e) => {
-        try {
-          const logItem: MessageLog = JSON.parse(e.data);
-          setLogs((prev) => [logItem, ...prev.slice(0, 199)]);
-        } catch (err) {
-          console.error('Error parsing SSE log item', err);
-        }
-      });
+        pollTimer = setInterval(fetchInitialData, 8000);
+      } else {
+        // Static Hosting Mode (Netlify, Vercel, GitHub Pages) -> Browser Direct MQTT (WSS / WS)
+        setIsBrowserMode(true);
+        const mgr = new BrowserMqttManager({
+          defaultTopic: '/esp32/mnt',
+          onStatusChange: (s) => setMqttStatus(s),
+          onDeviceUpdate: (dev) => {
+            setDevices((prev) => {
+              const idx = prev.findIndex((d) => d.mac === dev.mac);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = dev;
+                return updated;
+              } else {
+                return [dev, ...prev];
+              }
+            });
+            setSelectedDevice((curr) => (curr && curr.mac === dev.mac ? dev : curr));
+          },
+          onLog: (item) => {
+            setLogs((prev) => [item, ...prev.slice(0, 199)]);
+          },
+        });
 
-      eventSource.addEventListener('clear_logs', () => {
-        setLogs([]);
-      });
-
-      eventSource.onerror = () => {
-        // SSE error, will auto reconnect
-      };
-    } catch (err) {
-      console.warn('SSE connection failed, falling back to interval:', err);
+        browserMqttRef.current = mgr;
+        setDevices(mgr.getDevices());
+        mgr.connect();
+      }
     }
 
-    // Polling fallback every 8 seconds
-    const interval = setInterval(fetchInitialData, 8000);
+    detectEnvironmentAndInit();
 
     return () => {
-      clearInterval(interval);
-      if (eventSource) {
-        eventSource.close();
+      isMounted = false;
+      if (eventSource) eventSource.close();
+      if (pollTimer) clearInterval(pollTimer);
+      if (browserMqttRef.current) {
+        browserMqttRef.current.disconnect();
+        browserMqttRef.current = null;
       }
     };
   }, [fetchInitialData]);
@@ -173,6 +250,21 @@ export default function App() {
   // Command handler: ON (fc012c2db628-ON) / OF (fc012c2db628-OF)
   const handleControlDevice = async (mac: string, action: 'ON' | 'OF') => {
     const commandStr = `${mac}-${action}`;
+
+    if (isBrowserMode && browserMqttRef.current) {
+      try {
+        await browserMqttRef.current.publishCommand(mac, action);
+        addToast(
+          'success',
+          `已发送控制指令: ${commandStr}`,
+          `[浏览器直连 WSS] 目标主题: ${mqttStatus.topic}`
+        );
+      } catch (err: any) {
+        addToast('error', `发送失败: ${commandStr}`, err?.message || '直连发布超时');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/devices/${mac}/control`, {
         method: 'POST',
@@ -197,6 +289,17 @@ export default function App() {
 
   // Custom command send from modal
   const handleCustomCommand = async (mac: string, command: string) => {
+    if (isBrowserMode && browserMqttRef.current) {
+      try {
+        const action = command.endsWith('-ON') ? 'ON' : 'OF';
+        await browserMqttRef.current.publishCommand(mac, action);
+        addToast('success', `已发送指令 (WSS直连)`, command);
+      } catch (e: any) {
+        addToast('error', '发送失败', e.message);
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/devices/${mac}/control`, {
         method: 'POST',
@@ -215,6 +318,12 @@ export default function App() {
 
   // Update device nickname
   const handleUpdateNickname = async (mac: string, name: string) => {
+    if (isBrowserMode && browserMqttRef.current) {
+      browserMqttRef.current.updateDeviceName(mac, name);
+      addToast('info', '已更新设备备注');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/devices/${mac}`, {
         method: 'PATCH',
@@ -231,6 +340,26 @@ export default function App() {
 
   // Simulate data payload
   const handleSimulatePayload = async (customPayload?: any) => {
+    if (isBrowserMode && browserMqttRef.current) {
+      const payload = customPayload || {
+        mac: 'fc012c2db628',
+        fc012c2db628: {
+          temp: Number((26 + Math.random() * 6).toFixed(1)),
+          humi: Number((50 + Math.random() * 15).toFixed(1)),
+          bootupTimes: 4,
+          tick: 1552662 + Math.floor(Math.random() * 10000),
+          bon: 11,
+          boff: 15,
+          onSecs: 244 + Math.floor(Math.random() * 50),
+          onTimes: 11,
+          valveStatus: Math.random() > 0.5 ? 1 : 0,
+        },
+      };
+      (browserMqttRef.current as any).handleMessage(mqttStatus.topic, JSON.stringify(payload));
+      addToast('success', '已模拟 ESP32 数据上报', `MAC: ${payload.mac}`);
+      return;
+    }
+
     try {
       const res = await fetch('/api/devices/simulate', {
         method: 'POST',
@@ -267,8 +396,64 @@ export default function App() {
     await handleSimulatePayload(payload);
   };
 
+  // Simulate specific device update
+  const handleSimulateSpecificDevice = (targetMac: string) => {
+    const currentDev = devices.find(d => d.mac === targetMac);
+    const prevData = currentDev?.data;
+    const payload = {
+      mac: targetMac,
+      [targetMac]: {
+        temp: Number(((prevData ? prevData.temp : 26) + (Math.random() * 1.6 - 0.8)).toFixed(1)),
+        humi: Number(((prevData ? prevData.humi : 52) + (Math.random() * 2 - 1)).toFixed(1)),
+        bootupTimes: prevData ? prevData.bootupTimes : 4,
+        tick: (prevData ? prevData.tick : 1552662) + Math.floor(Math.random() * 120) + 1,
+        bon: prevData ? prevData.bon : 11,
+        boff: prevData ? prevData.boff : 15,
+        onSecs: (prevData ? prevData.onSecs : 244) + 5,
+        onTimes: prevData ? prevData.onTimes : 11,
+        valveStatus: prevData ? (prevData.valveStatus === 1 ? 0 : 1) : 1,
+      },
+    };
+    handleSimulatePayload(payload);
+  };
+
+  // Continuous auto simulation stream (every 3s)
+  useEffect(() => {
+    if (!isAutoSimulating) return;
+    const interval = setInterval(() => {
+      const devList = devices.length > 0 ? devices : [{ mac: 'fc012c2db628', data: {} as any }];
+      const chosen = devList[Math.floor(Math.random() * devList.length)];
+      const targetMac = chosen.mac;
+      const prevData = (chosen as any).data;
+
+      const payload = {
+        mac: targetMac,
+        [targetMac]: {
+          temp: Number(((prevData?.temp ?? 26) + (Math.random() * 0.8 - 0.4)).toFixed(1)),
+          humi: Number(((prevData?.humi ?? 52) + (Math.random() * 1.2 - 0.6)).toFixed(1)),
+          bootupTimes: prevData?.bootupTimes ?? 4,
+          tick: (prevData?.tick ?? 1552662) + Math.floor(Math.random() * 50) + 1,
+          bon: prevData?.bon ?? 11,
+          boff: prevData?.boff ?? 15,
+          onSecs: (prevData?.onSecs ?? 244) + 3,
+          onTimes: prevData?.onTimes ?? 11,
+          valveStatus: prevData?.valveStatus ?? 0,
+        },
+      };
+      handleSimulatePayload(payload);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAutoSimulating, devices]);
+
   // Update MQTT config
   const handleUpdateConfig = async (broker: string, topic: string) => {
+    if (isBrowserMode && browserMqttRef.current) {
+      browserMqttRef.current.connect(broker, topic);
+      addToast('info', '已更新 MQTT 直连参数', `Broker: ${broker}, 主题: ${topic}`);
+      return;
+    }
+
     try {
       const res = await fetch('/api/mqtt/config', {
         method: 'POST',
@@ -285,6 +470,13 @@ export default function App() {
 
   // Add custom device
   const handleAddCustomDevice = async (mac: string, name?: string) => {
+    if (isBrowserMode && browserMqttRef.current) {
+      browserMqttRef.current.addDevice(mac, name);
+      setDevices(browserMqttRef.current.getDevices());
+      addToast('success', '已登记设备 (本地持久化)', `MAC: ${mac}`);
+      return;
+    }
+
     try {
       const res = await fetch('/api/devices', {
         method: 'POST',
@@ -305,6 +497,12 @@ export default function App() {
 
   // Clear logs
   const handleClearLogs = async () => {
+    if (isBrowserMode) {
+      setLogs([]);
+      addToast('info', '已清空报文日志');
+      return;
+    }
+
     try {
       await fetch('/api/logs', { method: 'DELETE' });
       setLogs([]);
@@ -521,6 +719,70 @@ export default function App() {
 
         </div>
 
+        {/* Real-time Data Stream & Monitoring Status Banner */}
+        <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-3.5 sm:p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${mqttStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="font-semibold text-white">MQTT 实时监控:</span>
+              <span className="text-slate-400">
+                {mqttStatus.connected ? (isBrowserMode ? '浏览器 WSS 直连监听中' : '服务端 TCP 长连接监听中') : '正在连接 Broker...'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-400 font-mono">
+              <span>主题:</span>
+              <code className="text-cyan-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-[11px]">
+                {mqttStatus.topic} (已通配 /esp32/# 及 esp32/mnt)
+              </code>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span>最新报文:</span>
+              <span className="font-mono text-cyan-300 font-medium">
+                {mqttStatus.lastMessageAt ? new Date(mqttStatus.lastMessageAt).toLocaleTimeString() : '等待硬件上报...'}
+              </span>
+              <span className="text-slate-500">
+                (已接收 {mqttStatus.messageCount} 条)
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsAutoSimulating(!isAutoSimulating)}
+              className={`px-3 py-1.5 rounded-xl font-medium text-xs transition-all flex items-center gap-1.5 shadow-sm ${
+                isAutoSimulating
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400/40 animate-pulse'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              }`}
+              title="每 3 秒自动模拟产生一条 ESP32 遥测报文并推送刷新"
+            >
+              {isAutoSimulating ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 text-white" />
+                  <span>暂停动态数据流 (3秒/次)</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>开启动态数据流 (3秒/次)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => handleSimulatePayload()}
+              className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-800/80 font-medium text-xs rounded-xl transition-colors flex items-center gap-1.5"
+              title="模拟上报一条 fc012c2db628 设备的最新遥测数据"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>模拟推送 1 条</span>
+            </button>
+          </div>
+        </div>
+
         {/* Device Cards Grid */}
         {filteredDevices.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
@@ -531,6 +793,7 @@ export default function App() {
                 onControl={handleControlDevice}
                 onViewDetails={(dev) => setSelectedDevice(dev)}
                 onUpdateNickname={handleUpdateNickname}
+                onSimulateThisDevice={(mac) => handleSimulateSpecificDevice(mac)}
               />
             ))}
           </div>

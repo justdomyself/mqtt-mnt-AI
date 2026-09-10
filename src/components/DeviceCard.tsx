@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Power, 
   Thermometer, 
@@ -9,12 +9,17 @@ import {
   Zap, 
   Copy, 
   Check, 
-  ExternalLink,
-  Edit2,
-  CheckCircle2,
-  Layers,
-  ArrowUpRight,
-  SlidersHorizontal
+  ExternalLink, 
+  Edit2, 
+  CheckCircle2, 
+  Layers, 
+  ArrowUpRight, 
+  SlidersHorizontal,
+  Code2,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { DeviceInfo } from '../types';
 
@@ -24,6 +29,7 @@ interface DeviceCardProps {
   onControl: (mac: string, action: 'ON' | 'OF') => Promise<void>;
   onViewDetails: (device: DeviceInfo) => void;
   onUpdateNickname: (mac: string, name: string) => void;
+  onSimulateThisDevice?: (mac: string) => void;
 }
 
 export function DeviceCard({
@@ -31,20 +37,46 @@ export function DeviceCard({
   onControl,
   onViewDetails,
   onUpdateNickname,
+  onSimulateThisDevice,
 }: DeviceCardProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [isJsonExpanded, setIsJsonExpanded] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
   const [isSending, setIsSending] = useState<'ON' | 'OF' | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nickname, setNickname] = useState(device.name || `ESP32-${device.mac.slice(-4).toUpperCase()}`);
 
   const { mac, data, lastUpdated, online } = device;
   const isValveOpen = Number(data.valveStatus) === 1;
+  const prevUpdatedRef = useRef(lastUpdated);
+
+  // Trigger flash effect when a new telemetry packet arrives
+  useEffect(() => {
+    if (prevUpdatedRef.current !== lastUpdated) {
+      prevUpdatedRef.current = lastUpdated;
+      setJustUpdated(true);
+      const timer = setTimeout(() => setJustUpdated(false), 2200);
+      return () => clearTimeout(timer);
+    }
+  }, [lastUpdated]);
 
   const handleCopyMac = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(mac);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleCopyJson = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rawObject = {
+      mac,
+      [mac]: data,
+    };
+    navigator.clipboard.writeText(JSON.stringify(rawObject, null, 2));
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 1500);
   };
 
   const handleSaveNickname = (e: React.FormEvent) => {
@@ -87,8 +119,10 @@ export function DeviceCard({
   return (
     <div 
       id={`device-card-${mac}`}
-      className={`rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md ${
-        isValveOpen
+      className={`rounded-2xl border transition-all duration-300 overflow-hidden shadow-sm hover:shadow-md ${
+        justUpdated
+          ? 'bg-slate-900 border-cyan-400 ring-2 ring-cyan-400/50 shadow-cyan-950/50 scale-[1.008]'
+          : isValveOpen
           ? 'bg-slate-900 border-emerald-500/50 shadow-emerald-950/20 ring-1 ring-emerald-500/20'
           : 'bg-slate-900 border-slate-800 hover:border-slate-700'
       }`}
@@ -139,6 +173,13 @@ export function DeviceCard({
                 <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${online ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                 {online ? '在线' : '离线'}
               </span>
+
+              {justUpdated && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse flex items-center gap-1 shrink-0">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  <span>实时收到报文</span>
+                </span>
+              )}
             </div>
 
             {/* MAC address pill with copy */}
@@ -381,6 +422,72 @@ export function DeviceCard({
 
         </div>
 
+      </div>
+
+      {/* Live Raw JSON Payload Section */}
+      <div className="border-t border-slate-800/80 bg-slate-950/70 p-3 sm:px-5 sm:py-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsJsonExpanded(!isJsonExpanded)}
+            className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+          >
+            <Code2 className="w-3.5 h-3.5 text-cyan-400" />
+            <span>实时 JSON 报文</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono border border-slate-700/60">
+              {isJsonExpanded ? '收起' : '展开查看'}
+            </span>
+            {isJsonExpanded ? (
+              <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+            )}
+          </button>
+
+          <div className="flex items-center gap-2">
+            {onSimulateThisDevice && (
+              <button
+                type="button"
+                onClick={() => onSimulateThisDevice(mac)}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-800/60 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
+                title="触发该设备遥测数据模拟更新"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span className="hidden sm:inline">模拟此机刷新</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCopyJson}
+              className="text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors flex items-center gap-1"
+              title="复制当前最新 JSON 数据"
+            >
+              {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedJson ? '已复制' : '复制 JSON'}</span>
+            </button>
+          </div>
+        </div>
+
+        {isJsonExpanded && (
+          <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              <span>实时订阅主题: <code className="text-cyan-400">/esp32/mnt</code></span>
+              <span>更新时间: {new Date(lastUpdated).toLocaleTimeString()} ({getRelativeTime(lastUpdated)})</span>
+            </div>
+
+            <pre className={`p-3.5 rounded-xl border text-xs font-mono overflow-x-auto leading-relaxed transition-all duration-300 ${
+              justUpdated 
+                ? 'bg-slate-900 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400/40 shadow-lg shadow-cyan-950/40' 
+                : 'bg-slate-950 border-slate-800 text-emerald-300'
+            }`}>
+              {JSON.stringify({
+                mac,
+                [mac]: data
+              }, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   );

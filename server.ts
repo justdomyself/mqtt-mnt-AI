@@ -44,7 +44,7 @@ interface MessageLog {
 
 const PORT = 3000;
 let brokerUrl = 'mqtt://www.lxlee.top:1883';
-let currentTopic = '/mnt/esp32';
+let currentTopic = '/esp32/mnt';
 
 let mqttClient: MqttClient | null = null;
 let isConnected = false;
@@ -117,8 +117,19 @@ function initMqtt() {
       console.log(`Connected to MQTT broker: ${brokerUrl}`);
       addLog('sys', currentTopic, `成功连接到 MQTT Broker (${brokerUrl})`);
 
-      // Subscribe to both currentTopic and wildcard subtopics so no message is missed
-      const subTopics = [currentTopic, `${currentTopic}/#`, '/mnt/#'];
+      // Subscribe to currentTopic and wildcard subtopics (with and without leading slash) so no message is missed
+      const norm = currentTopic.replace(/^\/+/, '');
+      const subTopics = Array.from(new Set([
+        currentTopic,
+        `/${norm}`,
+        norm,
+        `/${norm}/#`,
+        `${norm}/#`,
+        '/esp32/#',
+        'esp32/#',
+        '/mnt/#',
+        'mnt/#'
+      ]));
       mqttClient?.subscribe(subTopics, { qos: 0 }, (err) => {
         if (err) {
           console.error(`Subscription error for ${subTopics}:`, err);
@@ -163,6 +174,7 @@ function initMqtt() {
       messageCount++;
       lastMessageAt = Date.now();
       handleIncomingMessage(topic, rawMsg);
+      broadcastSSE('status', getStatus());
     });
   } catch (err: any) {
     isConnecting = false;
@@ -427,6 +439,7 @@ async function startServer() {
 
     const command = `${mac}-${action}`;
     const pubTopic = targetTopic || currentTopic;
+    const altPubTopic = pubTopic.startsWith('/') ? pubTopic.slice(1) : `/${pubTopic}`;
 
     console.log(`Sending command to MQTT: topic=${pubTopic}, message=${command}`);
 
@@ -437,6 +450,10 @@ async function startServer() {
           addLog('tx', pubTopic, `[发送失败] ${command}: ${err.message}`, mac);
           res.status(500).json({ success: false, error: err.message });
           return;
+        }
+        // Also publish to alternate topic format (e.g. esp32/mnt alongside /esp32/mnt)
+        if (altPubTopic !== pubTopic && mqttClient) {
+          mqttClient.publish(altPubTopic, command, { qos: 0 });
         }
         addLog('tx', pubTopic, command, mac);
 
@@ -493,7 +510,10 @@ async function startServer() {
       payloadStr = JSON.stringify(sample);
     }
 
+    messageCount++;
+    lastMessageAt = Date.now();
     handleIncomingMessage(currentTopic, payloadStr);
+    broadcastSSE('status', getStatus());
     res.json({ success: true, message: '已模拟上报数据', payload: JSON.parse(payloadStr) });
   });
 

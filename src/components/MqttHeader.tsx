@@ -47,6 +47,17 @@ export function MqttHeader({
                 <span className="text-[11px] font-medium bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-2 py-0.5 rounded-full">
                   v1.0
                 </span>
+                {status.mode === 'browser' ? (
+                  <span className="text-[10px] font-medium bg-blue-950 text-blue-300 border border-blue-700/60 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                    WSS 前端直连
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    服务端代理
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-1.5">
                 <span>Broker:</span>

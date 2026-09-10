@@ -85,25 +85,53 @@ export function BrokerConfigModal({
         <div className="p-5 overflow-y-auto space-y-6">
           {/* Connection form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              MQTT 连接配置
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                MQTT 连接配置
+              </h3>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                {status.mode === 'browser' ? '静态托管 (WSS直连)' : '服务端代理 (TCP)'}
+              </span>
+            </div>
+
+            {/* Hosting platform deployment notice */}
+            <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 text-xs text-blue-200/90 leading-relaxed">
+              <p className="font-semibold text-blue-300 flex items-center gap-1.5 mb-1">
+                <span>💡 托管平台 (如 Netlify / 静态网站) 连接说明:</span>
+              </p>
+              <p className="text-[11px] text-slate-300">
+                浏览器因网页安全规范（HTTPS 混合内容与 TCP 限制）无法直接连 1883 裸端口，系统已自动启用 <strong>WSS 8084 安全 WebSocket 直连</strong>（<code className="text-cyan-300 font-mono">wss://www.lxlee.top:8084/mqtt</code>），无需后端即可实时收发。
+              </p>
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Broker 地址 (TCP URL)
+                Broker 地址 (TCP 或 WebSocket)
               </label>
               <input
                 type="text"
                 value={broker}
                 onChange={(e) => setBroker(e.target.value)}
-                placeholder="mqtt://www.lxlee.top:1883"
+                placeholder="wss://www.lxlee.top:8084/mqtt 或 mqtt://www.lxlee.top:1883"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-cyan-500"
                 required
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                支持标准 MQTT 端口 1883。默认：<code>mqtt://www.lxlee.top:1883</code>
-              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setBroker('wss://www.lxlee.top:8084/mqtt')}
+                  className="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors"
+                >
+                  填入 WSS (Netlify/HTTPS): 8084
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBroker('mqtt://www.lxlee.top:1883')}
+                  className="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  填入 TCP (完整服务器): 1883
+                </button>
+              </div>
             </div>
 
             <div>
@@ -114,12 +142,12 @@ export function BrokerConfigModal({
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="/mnt/esp32"
+                placeholder="/esp32/mnt"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-cyan-500"
                 required
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                默认订阅主题：<code>/mnt/esp32</code>
+                默认订阅主题：<code>/esp32/mnt</code>（自动通配 <code>esp32/mnt</code>、<code>/esp32/#</code> 与 <code>esp32/#</code>）
               </p>
             </div>
 
