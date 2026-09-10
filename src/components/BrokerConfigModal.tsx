@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Server, RefreshCw, Check, AlertTriangle, Play, HelpCircle } from 'lucide-react';
+import { X, Server, RefreshCw, Check, AlertTriangle, Play, HelpCircle, ExternalLink } from 'lucide-react';
 import { MqttStatus } from '../types';
 
 interface BrokerConfigModalProps {
@@ -95,13 +95,31 @@ export function BrokerConfigModal({
             </div>
 
             {/* Hosting platform deployment notice */}
-            <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 text-xs text-blue-200/90 leading-relaxed">
-              <p className="font-semibold text-blue-300 flex items-center gap-1.5 mb-1">
-                <span>💡 托管平台 (如 Netlify / 静态网站) 连接说明:</span>
+            <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 text-xs text-blue-200/90 leading-relaxed space-y-2">
+              <p className="font-semibold text-blue-300 flex items-center gap-1.5">
+                <span>💡 托管平台 (如 Netlify / 静态网站) 连接与证书说明:</span>
               </p>
-              <p className="text-[11px] text-slate-300">
-                浏览器因网页安全规范（HTTPS 混合内容与 TCP 限制）无法直接连 1883 裸端口，系统已自动启用 <strong>WSS 8084 安全 WebSocket 直连</strong>（<code className="text-cyan-300 font-mono">wss://www.lxlee.top:8084/mqtt</code>），无需后端即可实时收发。
+              <p className="text-[11px] text-slate-300 leading-normal">
+                在 HTTPS 网站中，浏览器无法直连 TCP 1883，系统自动切换为 <strong>WSS 8084 安全 WebSocket 直连</strong>（<code className="text-cyan-300 font-mono">wss://www.lxlee.top:8084/mqtt</code>）。
               </p>
+              <div className="bg-amber-950/40 border border-amber-600/40 rounded-lg p-2.5 text-[11px] text-amber-200 space-y-1.5">
+                <p className="font-bold text-amber-300 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>为什么会显示“正在连接...”连不上？</span>
+                </p>
+                <p className="leading-relaxed">
+                  因为 <code>www.lxlee.top:8084</code> 使用的是 EMQX <strong>自签名测试证书</strong>，浏览器默认静默拦截。解决办法：只需在新标签页打开并信任一次即可：
+                </p>
+                <a
+                  href="https://www.lxlee.top:8084"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-md transition-colors"
+                >
+                  <span>打开 https://www.lxlee.top:8084 点击高级信任</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
 
             <div>

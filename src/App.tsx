@@ -22,7 +22,9 @@ import {
   Pause,
   Clock,
   Sparkles,
-  Code2
+  Code2,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { DeviceInfo, MqttStatus, MessageLog } from './types';
 import { MqttHeader } from './components/MqttHeader';
@@ -718,6 +720,54 @@ export default function App() {
           </div>
 
         </div>
+
+        {/* Netlify / Browser WSS Self-Signed Certificate Guide */}
+        {isBrowserMode && !mqttStatus.connected && (
+          <div className="mb-6 bg-gradient-to-r from-amber-950/60 to-slate-900 border border-amber-500/50 rounded-2xl p-4 sm:p-5 text-amber-200 shadow-xl shadow-amber-950/30 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1 space-y-2.5 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h3 className="font-bold text-sm text-amber-300 flex items-center gap-2">
+                    <span>为什么一直显示【正在连接...】？</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      浏览器安全策略限制
+                    </span>
+                  </h3>
+                </div>
+                <p className="text-amber-100/90 leading-relaxed">
+                  检测到您当前在 Netlify (HTTPS 网站) 运行。网页正尝试直连 <code className="bg-slate-950 px-1.5 py-0.5 rounded font-mono text-cyan-300 border border-slate-800">wss://www.lxlee.top:8084/mqtt</code>。
+                  经服务器证书检测：您的 EMQX 8084 端口使用的是 <strong>默认自签名测试证书</strong>（CN: localhost）。现代浏览器出于安全规范，会<strong>静默拦截</strong>未经受信的自签名 WSS 连接。
+                </p>
+
+                <div className="p-3.5 bg-slate-950/90 rounded-xl border border-amber-600/30 space-y-2 text-slate-300">
+                  <p className="font-bold text-white flex items-center gap-1.5 text-xs">
+                    <span>⚡ 1 步快速解决（点击一次信任证书即可永久直连）：</span>
+                  </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <a
+                      href="https://www.lxlee.top:8084"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl transition-all shadow-md active:scale-95 text-xs shrink-0"
+                    >
+                      <span>第 1 步：在新标签页打开 8084 端口信任证书</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <span className="text-[11px] text-slate-400 leading-tight">
+                      在新打开的页面上，点击【<strong>高级</strong>】→【<strong>继续前往 www.lxlee.top (不安全)</strong>】
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-400 font-medium">
+                    ✓ 第 2 步：信任完毕后，回到本页面<strong>按 F5 刷新</strong>，WSS 即可瞬间连接并开始接收真实 ESP32 报文！
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Real-time Data Stream & Monitoring Status Banner */}
         <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-3.5 sm:p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">

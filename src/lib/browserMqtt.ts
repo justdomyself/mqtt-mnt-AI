@@ -138,6 +138,9 @@ export class BrowserMqttManager {
 
     this.emitStatus(false, true, null);
     this.addLog('sys', this.currentTopic, `正在直连 WebSocket MQTT Broker: ${this.brokerUrl}...`);
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && this.brokerUrl.includes(':8084')) {
+      this.addLog('sys', this.currentTopic, '💡 提示: 若浏览器一直处于连接中，需在新标签打开 https://www.lxlee.top:8084 允许一次自签名证书');
+    }
 
     try {
       const connectFn = (mqtt as any).connect || (mqtt as any).default?.connect || mqtt;
