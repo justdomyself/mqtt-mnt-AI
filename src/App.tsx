@@ -33,6 +33,7 @@ import { DeviceDetailModal } from './components/DeviceDetailModal';
 import { MessageLogPanel } from './components/MessageLogPanel';
 import { BrokerConfigModal } from './components/BrokerConfigModal';
 import { AddDeviceModal } from './components/AddDeviceModal';
+import { InstallAppModal } from './components/InstallAppModal';
 import { BrowserMqttManager } from './lib/browserMqtt';
 
 interface ToastMessage {
@@ -67,6 +68,18 @@ export default function App() {
   const [filterMode, setFilterMode] = useState<'all' | 'online' | 'valve_on' | 'valve_off'>('all');
   const [isAutoSimulating, setIsAutoSimulating] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isInstallOpen, setIsInstallOpen] = useState<boolean>(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  // Catch PWA native installation event (Android Chrome / Edge)
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
 
   // Add toast helper
   const addToast = (type: 'success' | 'info' | 'error', title: string, detail?: string) => {
@@ -576,6 +589,7 @@ export default function App() {
         isLogsOpen={isLogsOpen}
         onSimulateMessage={() => handleSimulatePayload()}
         onAddSimulatedDevice={handleAddSimulatedDevice}
+        onOpenInstallModal={() => setIsInstallOpen(true)}
       />
 
       {/* Main Container */}
@@ -914,6 +928,16 @@ export default function App() {
         isOpen={isAddDeviceOpen}
         onClose={() => setIsAddDeviceOpen(false)}
         onAdd={handleAddCustomDevice}
+      />
+
+      <InstallAppModal
+        isOpen={isInstallOpen}
+        onClose={() => setIsInstallOpen(false)}
+        deferredPrompt={deferredPrompt}
+        onInstallPromptSuccess={() => {
+          setDeferredPrompt(null);
+          addToast('success', '已添加到手机桌面！', '您可以像使用独立手机App一样随时打开');
+        }}
       />
 
     </div>

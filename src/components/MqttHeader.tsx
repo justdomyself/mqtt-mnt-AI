@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wifi, WifiOff, RefreshCw, Radio, Terminal, Plus, Settings2, ShieldCheck, Activity } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Radio, Terminal, Plus, Settings2, ShieldCheck, Activity, Smartphone } from 'lucide-react';
 import { MqttStatus } from '../types';
 
 interface MqttHeaderProps {
@@ -11,6 +11,7 @@ interface MqttHeaderProps {
   isLogsOpen: boolean;
   onSimulateMessage: () => void;
   onAddSimulatedDevice: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export function MqttHeader({
@@ -22,6 +23,7 @@ export function MqttHeader({
   isLogsOpen,
   onSimulateMessage,
   onAddSimulatedDevice,
+  onOpenInstallModal,
 }: MqttHeaderProps) {
   const [simulating, setSimulating] = useState(false);
 
@@ -131,6 +133,16 @@ export function MqttHeader({
               >
                 <Plus className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">添加测试设备</span>
+              </button>
+
+              <button
+                id="btn-open-install-modal"
+                onClick={onOpenInstallModal}
+                title="安装到手机桌面 (支持苹果 iOS / 安卓 PWA 原生体验)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-cyan-200 bg-cyan-950/80 hover:bg-cyan-900 active:scale-95 border border-cyan-700/60 rounded-lg transition-all shadow-sm shadow-cyan-950/40"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">安装到手机</span>
               </button>
 
               <button
