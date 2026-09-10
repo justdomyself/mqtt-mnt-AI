@@ -1,0 +1,6 @@
+{
+  "name": "ESP32 MQTT 设备监控控制中心",
+  "description": "实时订阅并监控 ESP32 设备的温湿度、心跳、电磁阀状态与开关控制平台",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
